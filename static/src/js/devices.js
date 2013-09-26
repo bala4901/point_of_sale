@@ -12,8 +12,6 @@ function openerp_pos_devices(instance,module){ //module is instance.point_of_sal
             
             this.weight = 0;
             this.weighting = false;
-            this.debug_weight = 0;
-            this.use_debug_weight = false;
 
             this.paying = false;
             this.default_payment_status = {
@@ -27,7 +25,7 @@ function openerp_pos_devices(instance,module){ //module is instance.point_of_sal
 
             this.connection = new instance.web.JsonRPC();
             this.connection.setup(url);
-            this.connection.session_id = _.uniqueId('posproxy');
+
             this.bypass_proxy = false;
             this.notifications = {};
             
@@ -68,6 +66,18 @@ function openerp_pos_devices(instance,module){ //module is instance.point_of_sal
             return this.message('scan_item_error_unrecognized',{ean: ean});
         },
 
+        //a product has been entered by keypad and recognized with success
+        // data is a parsed {product.code,qty,price} object
+        keypad_item_success: function(data){
+            return this.message('keypad_item_success',{data: data});
+        },
+
+        // a product has been entered by keypad but not recognized
+        // data is a parsed {product.code,qty,price} object
+        keypad_item_error_unrecognized: function(data){
+            return this.message('keypad_item_error_unrecognized',{data: data});
+        },
+        
         //the client is asking for help
         help_needed: function(){
             return this.message('help_needed');
@@ -94,36 +104,38 @@ function openerp_pos_devices(instance,module){ //module is instance.point_of_sal
         // and a weighting_end()
         weighting_read_kg: function(){
             var self = this;
-            this.message('weighting_read_kg',{})
-                .done(function(weight){
-                    if(self.weighting){
-                        if(self.use_debug_weight){
-                            self.weight = self.debug_weight;
-                        }else{
+            if(this.bypass_proxy){
+                return this.weight;
+            }else{
+                this.message('weighting_read_kg',{})
+                    .done(function(weight){
+                        if(self.weighting && !self.bypass_proxy){
                             self.weight = weight;
                         }
-                    }
-                });
-            return this.weight;
+                    });
+                return this.weight;
+            }
         },
 
         // sets a custom weight, ignoring the proxy returned value. 
         debug_set_weight: function(kg){
-            this.use_debug_weight = true;
-            this.debug_weight = kg;
+            this.bypass_proxy = true;
+            this.weight = kg;
         },
 
         // resets the custom weight and re-enable listening to the proxy for weight values
         debug_reset_weight: function(){
-            this.use_debug_weight = false;
-            this.debug_weight = 0;
+            this.bypass_proxy = false;
+            this.weight = 0;
         },
 
         // the client has finished weighting products
         weighting_end: function(){
-            this.weight = 0;
-            this.weighting = false;
-            this.message('weighting_end');
+            if(!this.bypass_proxy){
+                this.weight = 0;
+                this.weighting = false;
+                this.message('weighting_end');
+            }
         },
 
         // the pos asks the client to pay 'price' units
@@ -437,9 +449,10 @@ function openerp_pos_devices(instance,module){ //module is instance.point_of_sal
 
             // The barcode readers acts as a keyboard, we catch all keyup events and try to find a 
             // barcode sequence in the typed keys, then act accordingly.
-            this.handler = function(e){
+            $('body').delegate('','keyup', function (e){
+                console.log('keyup:'+String.fromCharCode(e.keyCode)+' '+e.keyCode,e);
                 //We only care about numbers
-                if (e.which >= 48 && e.which < 58){
+                if (e.keyCode >= 48 && e.keyCode < 58){
 
                     // The barcode reader sends keystrokes with a specific interval.
                     // We look if the typed keys fit in the interval. 
@@ -452,7 +465,7 @@ function openerp_pos_devices(instance,module){ //module is instance.point_of_sal
                             timeStamp = new Date().getTime();
                         }
                     }
-                    codeNumbers.push(e.which - 48);
+                    codeNumbers.push(e.keyCode - 48);
                     lastTimeStamp = new Date().getTime();
                     if (codeNumbers.length === 13) {
                         //We have found what seems to be a valid codebar
@@ -463,13 +476,179 @@ function openerp_pos_devices(instance,module){ //module is instance.point_of_sal
                     // NaN
                     codeNumbers = [];
                 }
-            };
-            $('body').on('keypress', this.handler);
+            });
         },
 
         // stops catching keyboard events 
         disconnect: function(){
-            $('body').off('keypress', this.handler)
+            $('body').undelegate('', 'keyup')
+        },
+    });
+    
+    // this module mimics a keypad-only cash register. Use connect() and 
+    // disconnect() to activate and deactivate it. Use set_action_callback to
+    // tell it what to do when the cashier enters product data(qty, price, etc).
+    module.Keypad = instance.web.Class.extend({
+        init: function(attributes){
+            this.pos = attributes.pos;
+            this.action_callback = undefined;
+            this.saved_callback_stack = [];
+        },
+
+        save_callback: function(){
+            this.saved_callback_stack.push(this.action_callback);
+        },
+
+        restore_callback: function(){
+            if (this.saved_callback_stack.length > 0) {
+                this.action_callback = this.saved_callback_stack.pop();
+            }
+        },
+
+        set_action_callback: function(callback){
+            this.action_callback = callback
+        },
+
+        //remove action callback
+        reset_action_callback: function(){
+            this.action_callback = undefined;
+        },
+        
+        reset_parse_result: function(parse_result) {
+            parse_result.code = 0;
+            parse_result.qty = 0;
+            parse_result.priceOverride = false;
+            parse_result.price = 0.00;
+            parse_result.discount = 0.00;
+            parse_result.void_last_line = false;
+        },
+        
+        copy_parse_result: function(src) {
+            var dst = {
+                code:          null,
+                qty:           1,
+                priceOverride: false,
+                price:         0.00,
+                discount:      0.00,
+                void_last_line: false,
+            };
+            dst.code = src.code;
+            dst.qty = src.qty;
+            dst.priceOverride = src.priceOverride;
+            dst.price = src.price;
+            dst.discount = src.discount;
+            dst.void_last_line = src.void_last_line;
+            return dst;
+        },
+
+        // starts catching keyboard events and tries to interpret keystrokes, 
+        // calling the callback when needed.
+        connect: function(){
+            var self = this;
+            var KC_PLU = 107;      // KeyCode: Product Code (Keypad '+')
+            var KC_QTY = 111;      // KeyCode: Quantity (Keypad '/')
+            var KC_AMT = 106;      // KeyCode: Price (Keypad '*')
+            var KC_DISC = 109;     // KeyCode: Discount Percentage [0..100] (Keypad '-')
+            var KC_VOID = 13;      // KeyCode: Void current line (Keyboard/Keypad Enter key)
+            var KC_CLR1 = 46;      // KeyCode: Clear last line of order (Keyboard Delete key)
+            var KC_CLR2 = 8;       // KeyCode: Clear current line (Keyboard Backspace key)
+            var codeNumbers = [];
+            var codeChars = [];
+            var parse_result = {
+                code:          null,
+                qty:           1,
+                priceOverride: false,
+                price:         0.00,
+                discount:      0.00,
+                void_last_line: false,
+            };
+            var kc_lookup = {
+                96: '0',
+                97: '1',
+                98: '2',
+                99: '3',
+                100: '4',
+                101: '5',
+                102: '6',
+                103: '7',
+                104: '8',
+                105: '9',
+                106: '*',
+                107: '+',
+                109: '-',
+                110: '.',
+                111: '/',
+            };
+
+            // Catch keyup events anywhere in the POS interface.  Barcode reader also does this, but won't interfere
+            // because it looks for a specific timing between keyup events. On the plus side this should mean that you
+            // can use both the keypad and the barcode reader during the same session (but for separate order lines).
+            // This could be useful in cases where the scanner can't read the barcode.
+            $('body').delegate('','keyup', function (e){
+                console.log('keyup:'+String.fromCharCode(e.keyCode)+' '+e.keyCode,e);
+                //We only care about numbers and modifiers
+                token = e.keyCode;                
+                if ((token >= 96 && token <= 111) || token === KC_PLU || token === KC_QTY || token === KC_AMT) {
+
+                    if (token === KC_PLU) {
+                        parse_result.code = codeChars.join('');
+                        var res = self.copy_parse_result(parse_result);
+                        codeNumbers = [];
+                        codeChars = [];
+                        self.reset_parse_result(parse_result);
+                        console.log('PLU token: code:'+res.code+', qty:'+res.qty+', price:'+res.price+', discount:'+res.discount);
+                        self.action_callback(res);
+                    } else if (token === KC_QTY) {
+                        parse_result.qty = parseInt(codeChars.join(''));
+                        codeNumbers = [];
+                        codeChars = [];
+                        console.log('QTY token: qty:'+parse_result.qty);
+                    } else if (token === KC_AMT) {
+                        parse_result.price = parseFloat(codeChars.join('')).toFixed(2);
+                        parse_result.priceOverride = true;
+                        codeNumbers = [];
+                        codeChars = [];
+                        console.log('AMT token: price:'+parse_result.price);
+                    } else if (token === KC_DISC) {
+                        parse_result.discount = parseFloat(codeChars.join(''));
+                        codeNumbers = [];
+                        codeChars = [];
+                        console.log('DISC token: discount:'+parse_result.discount);
+                    } else {
+                        codeNumbers.push(token - 48);
+                        codeChars.push(kc_lookup[token]);
+                    }
+                } else if (token === KC_VOID) {
+                    /*
+                     * This is commented out for now. We don't want to interfere with
+                     * the 'Enter' keycode used by the barcode reader to signify a scan.
+                     */
+                    // Void the last line of the order only if there isn't another line in pregress.
+//                    if (codeNumbers.length === 0) {
+//                        parse_result.void_last_line = true;
+//                        var res = self.copy_parse_result(parse_result);
+//                        codeNumbers = [];
+//                        codeChars = [];
+//                        self.reset_parse_result(parse_result);
+//                        console.log('VOID token:'+res.void_last_line);
+//                        self.action_callback(res);
+//                    }
+                } else {
+                    // For now pressing Backspace or Delete just defaults to doing nothing.
+                    // In the future we might want it to display a popup or something.
+                    if (token === KC_CLR1 || token === KC_CLR2) {
+                        ;
+                    }
+                    codeNumbers = [];
+                    codeChars = [];
+                    self.reset_parse_result(parse_result);
+                }
+            });
+        },
+
+        // stops catching keyboard events 
+        disconnect: function(){
+            $('body').undelegate('', 'keyup')
         },
     });
 

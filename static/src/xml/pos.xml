@@ -14,7 +14,6 @@
                     <div id="order-selector">
                         <button class="neworder-button">+</button>
                         <ol id="orders"></ol>
-						<label>Costomer :</label>
                     </div>
                     <!-- here goes header buttons -->
                 </div>
@@ -49,17 +48,11 @@
     </t>
 
     <t t-name="SynchNotificationWidget">
-        <t t-if="widget.get_nbr_pending() > 0">
-            <div class="oe_pos_synch-notification">
-                <t   t-esc="widget.get_nbr_pending()"/>
-                <div class="oe_status_red"></div>
-            </div>
-        </t>
-        <t t-if="widget.get_nbr_pending() === 0">
-            <div class="oe_pos_synch-notification oe_inactive">
-                <div class="oe_status_green"></div>
-            </div>
-        </t>
+        <div class="oe_pos_synch-notification">
+            <t   t-if="widget.get_nbr_pending() > 0" t-esc="widget.get_nbr_pending()"/>
+            <div t-if="widget.get_nbr_pending() > 0" class="oe_status_red"></div>
+            <div t-if="widget.get_nbr_pending() === 0" class="oe_status_green"></div>
+        </div>
     </t>
 
     <t t-name="HeaderButtonWidget">
@@ -221,7 +214,11 @@
                         <span class="left-block">
                             Total:
                         </span>
-                        <span class='right-block' id="payment-due-total"></span>
+                        <span class="right-block">
+                            <t t-if="widget.currency.position == 'before'" t-esc="widget.currency.symbol"/>
+                            <span id="payment-due-total"></span>
+                            <t t-if="widget.currency.position == 'after'" t-esc="widget.currency.symbol"/>
+                        </span>
                     </div>
                     <table id="paymentlines">
                     </table>
@@ -230,19 +227,31 @@
                             <span class='left-block'>
                                 Paid:
                             </span>
-                            <span class='right-block' id="payment-paid-total"></span>
+                            <span class='right-block'>
+                                <t t-if="widget.currency.position == 'before'" t-esc="widget.currency.symbol"/>
+                                <span id="payment-paid-total"></span>
+                                <t t-if="widget.currency.position == 'after'" t-esc="widget.currency.symbol"/>
+                            </span>
                         </div>
                         <div class="infoline">
                             <span class='left-block'>
                                 Remaining:
                             </span>
-                            <span class='right-block' id="payment-remaining"></span>
+                            <span class='right-block'>
+                                <t t-if="widget.currency.position == 'before'" t-esc="widget.currency.symbol"/>
+                                <span id="payment-remaining"></span>
+                                <t t-if="widget.currency.position == 'after'" t-esc="widget.currency.symbol"/>
+                            </span>
                         </div>
                         <div class="infoline" >
                             <span class='left-block'>
                                 Change:
                             </span>
-                            <span class='right-block' id="payment-change"></span>
+                            <span class='right-block'>
+                                <t t-if="widget.currency.position == 'before'" t-esc="widget.currency.symbol"/>
+                                <span id="payment-change"></span>
+                                <t t-if="widget.currency.position == 'after'" t-esc="widget.currency.symbol"/>
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -376,6 +385,9 @@
             <a href="#">
                 <div class="product-img">
                     <img src='' /> <!-- the product thumbnail -->
+                    <span class="code-tag">
+                        <t t-esc="widget.model.get('code')"/>
+                    </span>
                     <t t-if="!widget.model.get('to_weight')">
                         <span class="price-tag">
                             <t t-esc="widget.format_currency(widget.model.get('price'))"/>
@@ -422,13 +434,9 @@
 
                     </ul>
                     <div class="summary">
-                        <div t-attf-class="line #{widget.pos.get('selectedOrder').get('orderLines').length === 0 ? 'empty' : ''}">
-                            <div class='entry total'>
-                                <span class="label">Total: </span> <span class="value">0.00 €</span>
-                                <div class='subentry'>Taxes: <span class="value">0.00€</span></div>
-                            </div>
-                        </div>
-                        <div class='clear'></div>
+                        <span t-attf-class="line #{widget.pos.get('selectedOrder').get('orderLines').length === 0 ? 'empty' : ''}">
+                            <span class="label total">Total:</span> <span class="value total">0.00 €</span>
+                        </span>
                     </div>
                 </div>
             </div>
@@ -495,26 +503,26 @@
                 <t t-esc="widget.model.get_product().get('name')"/>
             </span>
             <span class="price">
-                <t t-esc="widget.format_currency(widget.model.get_display_price())"/>
+                <t t-esc="widget.format_currency(widget.model.get_price_with_tax())"/>
             </span>
             <ul class="info-list">
-                <t t-if="widget.model.get_quantity_str() !== '1'">
+                <t t-if="widget.model.get_quantity() !== 1.0">
                     <li class="info">
                         <em>
-                            <t t-esc="widget.model.get_quantity_str()" />
+                            <t t-esc="widget.model.get_quantity()" />
                         </em>
                         <t t-esc="widget.model.get_unit().name" />
                         at
-                        <t t-esc="widget.format_currency(widget.model.get_unit_price())" />
+                        <t t-esc="widget.format_currency(widget.model.get_price())" />
                         /
                         <t t-esc="widget.model.get_unit().name" />
                     </li>
                 </t>
-                <t t-if="widget.model.get_discount_str() !== '0'">
+                <t t-if="widget.model.get_discount() > 0">
                     <li class="info">
                         With a 
                         <em>
-                            <t t-esc="widget.model.get_discount_str()" />%
+                            <t t-esc="widget.model.get_discount()" />%
                         </em>
                         discount
                     </li>
@@ -553,54 +561,61 @@
             <t t-esc="widget.get_name()" />
         </span>
     </t>
-	
-	
+
+    <t t-name="CustomernameWidget">
+        <span class="customername">
+            <t t-esc="widget.get_name()" />
+        </span>
+    </t>
 
     <t t-name="PosTicket">
         <div class="pos-sale-ticket">
-            <div class="pos-right-center">FAKTUR PERJUALAN</div>
+            
+            <div class="pos-right-align"><t t-esc="new Date().toString(Date.CultureInfo.formatPatterns.shortDate + ' ' +
+                Date.CultureInfo.formatPatterns.longTime)"/> <t t-esc="widget.currentOrder.attributes.name"/></div>
             <br />
             <t t-esc="widget.company.name"/><br />
-			Nomor: <t t-esc="widget.currentOrder.attributes.name"/><br />
-            Tanggal: <t t-esc="new Date().toString(Date.CultureInfo.formatPatterns.shortDate + ' ' + Date.CultureInfo.formatPatterns.longTime)"/><br />
-            Customer: <t t-esc="widget.user.name"/><br />
+            <t t-if="widget.company.vat">
+                TIN: <t t-esc="widget.company.vat"/><br />
+            </t>
+            Phone: <t t-esc="widget.company.phone || ''"/><br />
+            User: <t t-esc="widget.user.name"/><br />
+            Shop: <t t-esc="widget.shop_obj.name"/><br />
+            <t t-if="widget.client">
+                Customer: <t t-esc="widget.client.name"/><br />
+                <t t-if="widget.client.vat">
+                    Customer TIN: <t t-esc="widget.client.vat"/><br />                    
+                </t>
+            </t>
             <br />
             <table>
-                <colgroup>
-                    <col width='50%' />
-                    <col width='25%' />
-                    <col width='25%' />
-                </colgroup>
-                <tr t-foreach="widget.currentOrderLines.toArray()" t-as="orderline">
+                <tr t-foreach="widget.currentOrderLines.toArray()" t-as="order">
                     <td>
-                        <t t-esc="orderline.get_product().get('name')"/>
-                         <t t-if="orderline.get_discount() > 0">
+                        <t t-esc="order.get_product().get('name')"/>
+                         <t t-if="order.get_discount() > 0">
                             <div class="pos-disc-font">
-                                With a <t t-esc="orderline.get_discount()"/>% discount
+                                With a <t t-esc="order.get_discount()"/>% discount
                             </div>
                         </t>
                     </td>
                     <td class="pos-right-align">
-                        <t t-esc="orderline.get_quantity_str_with_unit()"/>
+                        <t t-esc="order.get_quantity().toFixed(0)"/>
                     </td>
                     <td class="pos-right-align">
-                        <t t-esc="widget.format_currency(orderline.get_display_price())"/>
+                        <t t-esc="widget.format_currency(order.get_price() * (1 - order.get_discount()/100) * order.get_quantity().toFixed(2))"/>
                     </td>
                 </tr>
             </table>
             <br />
             <table>
-                <tr><td>Subtotal:</td><td class="pos-right-align">
-                    <t t-esc="widget.format_currency(widget.currentOrder.getSubtotal())"/>
-                    </td></tr>
                 <tr><td>Tax:</td><td class="pos-right-align">
-                    <t t-esc="widget.format_currency(widget.currentOrder.getTax())"/>
+                    <t t-esc="widget.format_currency(widget.currentOrder.getTax().toFixed(2))"/>
                     </td></tr>
                 <tr><td>Discount:</td><td class="pos-right-align">
-                    <t t-esc="widget.format_currency(widget.currentOrder.getDiscountTotal())"/>
+                    <t t-esc="widget.format_currency(widget.currentOrder.getDiscountTotal().toFixed(2))"/>
                     </td></tr>
                 <tr class="emph"><td>Total:</td><td class="pos-right-align">
-                    <t t-esc="widget.format_currency(widget.currentOrder.getTotalTaxIncluded())"/>
+                    <t t-esc="widget.format_currency(widget.currentOrder.getTotal().toFixed(2))"/>
                     </td></tr>
             </table>
             <br />
@@ -610,14 +625,14 @@
                         <t t-esc="pline.get_cashregister().get('journal_id')[1]"/>
                     </td>
                     <td class="pos-right-align">
-                        <t t-esc="widget.format_currency(pline.get_amount())"/>
+                        <t t-esc="widget.format_currency((pline.get_amount()).toFixed(2))"/>
                     </td>
                 </tr>
             </table>
             <br />
             <table>
                 <tr><td>Change:</td><td class="pos-right-align">
-                    <t t-esc="widget.format_currency(widget.currentOrder.getPaidTotal() - widget.currentOrder.getTotalTaxIncluded())"/>
+                    <t t-esc="widget.format_currency((widget.currentOrder.getPaidTotal() - widget.currentOrder.getTotal()).toFixed(2))"/>
                     </td></tr>
             </table>
         </div>
@@ -751,6 +766,68 @@
             </ul>
             <p class="close_button">close</p>
         </div>
+    </t>
+
+    <t t-name="CustomerListWidget">
+        <div class='customer-list-container'>
+            <div class="customer-list-scroller">
+                <ol id="customers-screen-ol" class="customer-list">
+                </ol>
+            </div>
+        </div>
+    </t>
+
+    <t t-name="SelectCustomerPopupWidget">
+        <div class="modal-dialog">
+            <div class="popup-selection">
+                <div class="customer-title">
+                    Customer Selection
+                </div>
+
+                <div class="customer-searchbox">
+                    <input placeholder="Search Customers" />
+                    <img class="customer-search-clear" src="/point_of_sale/static/src/img/search_reset.gif" />
+                </div>
+
+                <div class="content-container">
+                    <span class="placeholder-CustomerListWidget" />
+                </div>
+
+                <div id="customer-cancel" class = "button cancel">
+                    Cancel
+                </div>
+            </div>
+        </div>
+    </t>
+    
+    <t t-name="CustomerWidget">
+        <li class='customer'>
+            <a href="#">
+                <span class="customer-field customer-name">
+                    <t t-esc="widget.model.get('name')"/>
+                </span>
+                <span class="customer-field">
+                    <t t-if="widget.model.get('vat')">
+                        <t t-esc="widget.model.get('vat')"/>
+                    </t>
+                </span>
+                <span class="customer-field">
+                    <t t-if="widget.model.get('email')">
+                        <t t-esc="widget.model.get('email')"/>
+                    </t>
+                </span>
+                <span class="customer-field customer-phone">
+                    <t t-if="widget.model.get('phone')">
+                        <t t-esc="widget.model.get('phone')"/>
+                    </t>
+                </span>
+                <span class="customer-field customer-phone">
+                    <t t-if="widget.model.get('mobile')">
+                        <t t-esc="widget.model.get('mobile')"/>
+                    </t>
+                </span>
+            </a>
+        </li>
     </t>
 
 </templates>

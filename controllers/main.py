@@ -84,6 +84,22 @@ class PointOfSaleController(openerp.addons.web.http.Controller):
         return 
 
     @openerp.addons.web.http.jsonrequest
+    def keypad_item_success(self, request, data):
+        """
+        A product has been entered by keypad with success
+        """
+        print 'keypad_item_success: ' + str(data)
+        return 
+
+    @openerp.addons.web.http.jsonrequest
+    def keypad_item_error_unrecognized(self, request, data):
+        """
+        A product has been entered by keypad without success
+        """
+        print 'keypad_item_error_unrecognized: ' + str(data)
+        return 
+
+    @openerp.addons.web.http.jsonrequest
     def help_needed(self, request):
         """
         The user wants an help (ex: light is on)

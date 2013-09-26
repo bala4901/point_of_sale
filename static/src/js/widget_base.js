@@ -22,20 +22,14 @@ function openerp_pos_basewidget(instance, module){ //module is instance.point_of
             if(this.pos && this.pos.get('currency')){
                 this.currency = this.pos.get('currency');
             }else{
-                this.currency = {symbol: '$', position: 'after', rounding: 0.01};
+                this.currency = {symbol: '$', position: 'after'};
             }
 
-            var decimals = Math.max(0,Math.ceil(Math.log(1.0 / this.currency.rounding) / Math.log(10)));
-
             this.format_currency = function(amount){
-                if(typeof amount === 'number'){
-                    amount = Math.round(amount*100)/100;
-                    amount = amount.toFixed(decimals);
-                }
                 if(this.currency.position === 'after'){
-                    return amount + ' ' + this.currency.symbol;
+                    return Math.round(amount*100)/100 + ' ' + this.currency.symbol;
                 }else{
-                    return this.currency.symbol + ' ' + amount;
+                    return this.currency.symbol + ' ' + Math.round(amount*100)/100;
                 }
             }
 
